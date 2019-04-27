@@ -1167,6 +1167,10 @@ class Sales extends Secure_Controller
 		$data['selected_customer_id'] = $sale_info['customer_id'];
 		$data['sale_info'] = $sale_info;
 
+		$data['balance_due'] = TRUE;
+		$data['payment_type_new'] = '--';
+		$data['payment_amount_new'] = '';
+
 		$data['payments'] = array();
 		foreach($this->Sale->get_sale_payments($sale_id)->result() as $payment)
 		{
@@ -1179,6 +1183,12 @@ class Sales extends Secure_Controller
 
 		// don't allow gift card to be a payment option in a sale transaction edit because it's a complex change
 		$data['payment_options'] = $this->xss_clean($this->Sale->get_payment_options(FALSE));
+
+		// Set up a slightly modified list of payment types for new payment entry
+		$new_payment_options = $this->Sale->get_payment_options(FALSE);
+		$new_payment_options["--"] = $this->lang->line('common_none_selected_text');
+		$data['new_payment_options'] = $this->xss_clean($new_payment_options);
+
 		$this->load->view('sales/form', $data);
 	}
 
@@ -1283,6 +1293,35 @@ class Sales extends Secure_Controller
 					// add up the new payment amount to an existing payment type
 					$payments[$key]['payment_amount'] += $payment_amount;
 				}
+			}
+		}
+
+		$payment_amount = $this->input->post('payment_amount_new');
+		$payment_type = $this->input->post('payment_type_new');
+
+		if($payment_type != '--' && $payment_amount <> 0)
+		{
+			// search for any payment of the same type that was already added, if that's the case add up the new payment amount
+			$key = FALSE;
+			if(!empty($payments))
+			{
+				// search in the multi array the key of the entry containing the current payment_type
+				// NOTE: in PHP5.5 the array_map could be replaced by an array_column
+				$key = array_search($payment_type, array_map(function ($v)
+				{
+					return $v['payment_type'];
+				}, $payments));
+			}
+
+			// if no previous payment is found add a new one
+			if($key === FALSE)
+			{
+				$payments[] = array('payment_type' => $payment_type, 'payment_amount' => $payment_amount);
+			}
+			else
+			{
+				// add up the new payment amount to an existing payment type
+				$payments[$key]['payment_amount'] += $payment_amount;
 			}
 		}
 
